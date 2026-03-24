@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip --version)",
+      "Bash(source venv/Scripts/activate)",
+      "Bash(pip install:*)",
+      "Bash(django-admin startproject:*)",
+      "Bash(python manage.py startapp features)",
+      "Bash(python manage.py makemigrations features)",
+      "Bash(python manage.py migrate)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)"
+    ]
+  }
+}
