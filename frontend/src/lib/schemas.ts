@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+export const featureStatusSchema = z.union([
+  z.literal("under_review"),
+  z.literal("planned"),
+  z.literal("in_progress"),
+  z.literal("shipped"),
+]);
+
+export type FeatureStatus = z.infer<typeof featureStatusSchema>;
+
 /** Client-side validation schema for the feature submission form. */
 export const featureFormSchema = z.object({
   title: z

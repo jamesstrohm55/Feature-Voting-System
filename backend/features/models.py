@@ -17,11 +17,23 @@ class Voter(models.Model):
 class FeatureRequest(models.Model):
     """A user-submitted feature request."""
 
+    class Status(models.TextChoices):
+        UNDER_REVIEW = "under_review", "Under Review"
+        PLANNED = "planned", "Planned"
+        IN_PROGRESS = "in_progress", "In Progress"
+        SHIPPED = "shipped", "Shipped"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=200)
     description = models.TextField()
     author = models.ForeignKey(
         Voter, on_delete=models.CASCADE, related_name="feature_requests"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.UNDER_REVIEW,
+        db_index=True,
     )
     vote_count = models.PositiveIntegerField(default=0, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)

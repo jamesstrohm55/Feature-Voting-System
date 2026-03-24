@@ -18,7 +18,10 @@
       "Bash(rm:*)",
       "Bash(npx vite:*)",
       "Bash(python manage.py test features.tests.VoteIntegrityTests -v2)",
-      "Bash(python manage.py test features.tests -v2)"
+      "Bash(python manage.py test features.tests -v2)",
+      "Bash(python manage.py makemigrations features -n add_status_to_featurerequest)",
+      "Bash(curl -s http://127.0.0.1:8000/api/features/ -H \"X-Session-Id: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\")",
+      "Bash(python -c \"import sys,json; [print\\(f''''{f[\"\"title\"\"][:30]:30s} {f[\"\"status\"\"]}''''\\) for f in json.load\\(sys.stdin\\)]\")"
     ]
   }
 }

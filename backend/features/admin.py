@@ -11,7 +11,8 @@ class VoterAdmin(admin.ModelAdmin):
 
 @admin.register(FeatureRequest)
 class FeatureRequestAdmin(admin.ModelAdmin):
-    list_display = ["title", "author", "vote_count", "created_at"]
+    list_display = ["title", "author", "status", "vote_count", "created_at"]
+    list_editable = ["status"]
     readonly_fields = ["id", "vote_count", "created_at", "updated_at"]
 
 

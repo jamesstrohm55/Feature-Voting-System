@@ -17,6 +17,7 @@ class FeatureRequestListSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "author_session_id",
+            "status",
             "vote_count",
             "has_voted",
             "is_own",

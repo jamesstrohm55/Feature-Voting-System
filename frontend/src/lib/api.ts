@@ -57,11 +57,14 @@ export const api = {
     }),
 };
 
+export type FeatureStatus = "under_review" | "planned" | "in_progress" | "shipped";
+
 export interface FeatureResponse {
   id: string;
   title: string;
   description: string;
   author_session_id: string;
+  status: FeatureStatus;
   vote_count: number;
   has_voted: boolean;
   is_own: boolean;

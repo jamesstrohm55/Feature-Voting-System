@@ -1,4 +1,4 @@
-import type { FeatureResponse } from "../lib/api";
+import type { FeatureResponse, FeatureStatus } from "../lib/api";
 import { VoteButton } from "./VoteButton";
 
 interface Props {
@@ -6,8 +6,16 @@ interface Props {
   rank: number;
 }
 
+const STATUS_CONFIG: Record<FeatureStatus, { label: string; classes: string }> = {
+  under_review: { label: "Under Review", classes: "bg-gray-100 text-gray-600" },
+  planned:      { label: "Planned",      classes: "bg-blue-50 text-blue-600" },
+  in_progress:  { label: "In Progress",  classes: "bg-amber-50 text-amber-700" },
+  shipped:      { label: "Shipped",      classes: "bg-green-50 text-green-700" },
+};
+
 export function FeatureCard({ feature, rank }: Props) {
   const timeAgo = getTimeAgo(feature.created_at);
+  const badge = STATUS_CONFIG[feature.status];
 
   return (
     <article
@@ -27,6 +35,11 @@ export function FeatureCard({ feature, rank }: Props) {
           >
             {feature.title}
           </h3>
+          {badge && (
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium leading-tight ${badge.classes}`}>
+              {badge.label}
+            </span>
+          )}
         </div>
         <p className="text-sm text-slate-600 line-clamp-2">
           {feature.description}
