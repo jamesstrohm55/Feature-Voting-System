@@ -16,7 +16,9 @@
       "Bash(python \"src/ui-ux-pro-max/scripts/search.py\" \"feature voting SaaS tool productivity modern clean minimal\" --design-system -p \"FeatureVote\")",
       "Bash(npm run:*)",
       "Bash(rm:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(python manage.py test features.tests.VoteIntegrityTests -v2)",
+      "Bash(python manage.py test features.tests -v2)"
     ]
   }
 }

@@ -8,8 +8,9 @@ Full-stack feature voting system. Users submit feature requests, browse what oth
 React (Vite + TypeScript)  →  Django REST Framework  →  Supabase Postgres
          ↑                            ↑                        ↑
    TanStack Query              sole API backend          managed database
-   Tailwind CSS               session middleware          standard Postgres
+   Tailwind CSS v4            session middleware          standard Postgres
    Zod validation             DRF serializers             no vendor lock-in
+   Plus Jakarta Sans          13 automated tests
 ```
 
 Every data operation flows through Django. The React app never touches Supabase directly — no client SDK, no direct queries, no split authority over data. One backend, one source of truth.
@@ -31,6 +32,8 @@ Every data operation flows through Django. The React app never touches Supabase 
 - **Self-vote prevention** — you cannot upvote your own submission
 - **Anonymous session identity** — a UUID generated in the browser and sent as `X-Session-Id` on every request, mapped to a `Voter` row server-side
 - **Optimistic updates** via TanStack Query mutations with rollback on failure
+- **Accessible** — WCAG focus-visible indicators, aria-labels, aria-live regions, reduced-motion support
+- **Responsive** — mobile-first layout with breakpoints at sm/md/lg, 44px touch targets
 - **PWA installable** on mobile and desktop
 
 ## Local Setup
@@ -87,12 +90,12 @@ To run against Supabase Postgres, set `DATABASE_URL` to your connection string a
 
 | Method | Endpoint | Description | Success | Key Errors |
 |--------|----------|-------------|---------|------------|
-| `GET` | `/api/features/` | List all features, ranked by votes | `200` | — |
-| `POST` | `/api/features/` | Create a feature request | `201` | `400` validation |
+| `GET` | `/api/features/` | List all features, ranked by votes | `200` | `401` missing header, `400` malformed UUID |
+| `POST` | `/api/features/` | Create a feature request | `201` | `401` missing header, `400` validation |
 | `POST` | `/api/features/{id}/vote/` | Upvote a feature | `201` | `403` self-vote, `409` duplicate |
 | `DELETE` | `/api/features/{id}/vote/` | Remove your upvote | `200` | `404` not voted |
 
-All endpoints require the `X-Session-Id: <uuid>` header. The frontend handles this transparently via `crypto.randomUUID()` stored in localStorage.
+All endpoints require the `X-Session-Id: <uuid>` header. Missing → `401`, malformed → `400`. The frontend handles this transparently via `crypto.randomUUID()` stored in localStorage.
 
 ## Data Model
 
@@ -119,6 +122,23 @@ Vote
   created_at      DateTimeField
   ── UNIQUE (voter, feature_request)
 ```
+
+## Tests
+
+```bash
+cd backend
+python manage.py test features.tests -v2
+```
+
+13 tests across 5 classes, all passing:
+
+| Class | Tests | What it proves |
+|-------|-------|----------------|
+| `VoteIntegrityTests` | 3 | Duplicate vote → 409, self-vote → 403, unvote without vote → 404 |
+| `VoteCountTests` | 3 | Vote increments to 1, unvote decrements to 0, two voters yield count of 2 (all verified via `refresh_from_db`) |
+| `MiddlewareAndSerializerTests` | 4 | Missing header → 401, malformed UUID → 400, spoofed `author` field ignored, injected `vote_count` ignored |
+| `RankingTests` | 2 | Features returned in descending vote order, tiebroken by most recent first (asserted on id order) |
+| `RaceConditionTests` | 1 | Two threads fire simultaneously via `threading.Barrier` — exactly one 201, one 409, one Vote row, `vote_count` = 1. Skipped on SQLite (shared-cache ignores busy_timeout); runs on Postgres. |
 
 ## Technical Decisions
 
@@ -148,6 +168,7 @@ Vote
 │   │   ├── serializers.py       # read + write serializers
 │   │   ├── middleware.py        # X-Session-Id → Voter resolution
 │   │   ├── urls.py              # /api/features/, /api/features/{id}/vote/
+│   │   ├── tests.py             # 13 tests across 5 classes
 │   │   ├── admin.py             # Django admin registration
 │   │   └── management/commands/
 │   │       └── seed_demo.py     # Realistic demo data
@@ -174,4 +195,5 @@ Vote
 - **Search and filtering** — full-text search on title and description via Postgres `tsvector`, filter by status or date range
 - **WebSocket vote updates** — Django Channels to push vote count changes to all connected clients in real time
 - **Rate limiting** — throttle feature creation and vote toggling per session to prevent abuse
+- **Dark mode** — Tailwind's `dark:` variant with system preference detection and manual toggle
 - **Production deployment** — Dockerize both services, add a GitHub Actions CI pipeline, deploy frontend to Vercel and backend to Railway or Fly.io
