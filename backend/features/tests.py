@@ -544,6 +544,151 @@ class AdminPermissionTests(APITestCase):
         self.assertFalse(first["is_staff"])
 
 
+class AuthAndPermissionTests(APITestCase):
+    """Focused permission boundary tests: 401 for unauthed, 403 for non-staff."""
+
+    def setUp(self):
+        self.client = APIClient()
+        from django.core.cache import cache
+        cache.clear()
+
+        self.staff, self.staff_token = _make_staff()
+        self.regular, self.regular_token = _make_user()
+        self.other, self.other_token = _make_user()
+
+        self.feature = FeatureRequest.objects.create(
+            title="Permission test feature",
+            description="A feature for permission boundary testing.",
+            author=self.other,
+        )
+
+    # ── 1. Unauthenticated → 401 ────────────────────────────────────────
+
+    def test_unauthenticated_get_returns_401(self):
+        resp = self.client.get("/api/features/")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # ── 2. Regular user cannot PATCH status → 403 ───────────────────────
+
+    def test_regular_user_cannot_patch_status(self):
+        resp = self.client.patch(
+            f"/api/features/{self.feature.id}/",
+            data={"status": "shipped"},
+            format="json",
+            **_auth_header(self.regular_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    # ── 3. Staff can PATCH status → 200 + correct value ─────────────────
+
+    def test_staff_can_patch_status(self):
+        resp = self.client.patch(
+            f"/api/features/{self.feature.id}/",
+            data={"status": "in_progress"},
+            format="json",
+            **_auth_header(self.staff_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["status"], "in_progress")
+        self.feature.refresh_from_db()
+        self.assertEqual(self.feature.status, "in_progress")
+
+    # ── 4. Regular user cannot DELETE another's feature → 403 ────────────
+
+    def test_regular_user_cannot_delete_others_feature(self):
+        resp = self.client.delete(
+            f"/api/features/{self.feature.id}/",
+            **_auth_header(self.regular_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(FeatureRequest.objects.filter(id=self.feature.id).exists())
+
+    # ── 5. Regular user can DELETE own feature → 204 ─────────────────────
+
+    def test_regular_user_can_delete_own_feature(self):
+        own_feature = FeatureRequest.objects.create(
+            title="My feature",
+            description="Created by regular user for deletion test.",
+            author=self.regular,
+        )
+        resp = self.client.delete(
+            f"/api/features/{own_feature.id}/",
+            **_auth_header(self.regular_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(FeatureRequest.objects.filter(id=own_feature.id).exists())
+
+    # ── 6. Staff can DELETE any feature → 204 ────────────────────────────
+
+    def test_staff_can_delete_any_feature(self):
+        resp = self.client.delete(
+            f"/api/features/{self.feature.id}/",
+            **_auth_header(self.staff_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(FeatureRequest.objects.filter(id=self.feature.id).exists())
+
+    # ── 7. Regular user cannot PATCH pin → 403 ──────────────────────────
+
+    def test_regular_user_cannot_pin(self):
+        resp = self.client.patch(
+            f"/api/features/{self.feature.id}/pin/",
+            **_auth_header(self.regular_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.feature.refresh_from_db()
+        self.assertFalse(self.feature.is_pinned)
+
+    # ── 8. Staff can PATCH pin and it toggles → 200 ─────────────────────
+
+    def test_staff_can_toggle_pin(self):
+        resp = self.client.patch(
+            f"/api/features/{self.feature.id}/pin/",
+            **_auth_header(self.staff_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp.data["is_pinned"])
+        self.feature.refresh_from_db()
+        self.assertTrue(self.feature.is_pinned)
+
+        # Toggle off
+        resp = self.client.patch(
+            f"/api/features/{self.feature.id}/pin/",
+            **_auth_header(self.staff_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertFalse(resp.data["is_pinned"])
+        self.feature.refresh_from_db()
+        self.assertFalse(self.feature.is_pinned)
+
+    # ── 9. Pinned features appear first regardless of votes ──────────────
+
+    def test_pinned_beats_high_vote_count(self):
+        high_votes = FeatureRequest.objects.create(
+            title="Very popular",
+            description="Has many votes but is not pinned.",
+            author=self.other,
+            vote_count=999,
+            is_pinned=False,
+        )
+        low_votes_pinned = FeatureRequest.objects.create(
+            title="Pinned by admin",
+            description="Zero votes but pinned by staff.",
+            author=self.other,
+            vote_count=0,
+            is_pinned=True,
+        )
+
+        resp = self.client.get(
+            "/api/features/",
+            **_auth_header(self.regular_token),
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        ids = [f["id"] for f in resp.data]
+        self.assertEqual(ids[0], str(low_votes_pinned.id))
+        self.assertIn(str(high_votes.id), ids)
+
+
 @unittest.skipIf(
     _using_sqlite(),
     "SQLite shared-cache in-memory DB ignores busy_timeout on table-level "
