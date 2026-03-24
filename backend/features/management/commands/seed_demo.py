@@ -151,6 +151,9 @@ class Command(BaseCommand):
                 self.style.WARNING("Feature data already exists. Use --flush to re-seed.")
             )
         else:
+            # Clean up any leftover seed users from a previous partial run.
+            User.objects.filter(username__startswith="seed-").delete()
+
             with transaction.atomic():
                 authors = [
                     User.objects.create_user(
