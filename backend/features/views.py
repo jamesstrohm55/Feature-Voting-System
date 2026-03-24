@@ -16,9 +16,15 @@ from .serializers import (
 def feature_list_create(request):
     """GET: list all features ranked by votes. POST: create a new feature."""
     if request.method == "GET":
-        features = FeatureRequest.objects.select_related("author").all()
+        # Explicit ranking: highest votes first, then newest. The db_index on
+        # vote_count lets Postgres satisfy this without a filesort.
+        features = (
+            FeatureRequest.objects
+            .select_related("author")
+            .order_by("-vote_count", "-created_at")
+        )
 
-        # Batch-fetch which features the current voter has voted on
+        # Single query to resolve has_voted for every card — avoids N+1.
         voter_voted_feature_ids = set(
             Vote.objects.filter(voter=request.voter).values_list(
                 "feature_request_id", flat=True

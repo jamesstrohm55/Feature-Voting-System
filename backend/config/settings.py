@@ -19,10 +19,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Third-party
     "rest_framework",
     "corsheaders",
-    # Local
     "features",
 ]
 
@@ -31,6 +29,8 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    # CsrfViewMiddleware omitted — API is stateless, authenticated by X-Session-Id header.
+    # Django admin still works because it uses session auth on its own routes.
     "features.middleware.SessionIdMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -57,7 +57,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Database — Supabase Postgres via DATABASE_URL, falls back to SQLite
+# Database — Supabase Postgres via DATABASE_URL, falls back to SQLite for local dev.
+# dj-database-url parses the URL into Django's DATABASES dict automatically.
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
@@ -80,7 +81,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS
+# CORS — allow the Vite dev server and any additional origins from env.
 CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS", "http://localhost:5173"
 ).split(",")
@@ -97,17 +98,14 @@ CORS_ALLOW_HEADERS = [
     "x-session-id",
 ]
 
-# DRF
+# DRF — JSON-only API. BrowsableAPI renderer included in DEBUG for convenience.
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
-    ],
+    ]
+    + (
+        ["rest_framework.renderers.BrowsableAPIRenderer"] if DEBUG else []
+    ),
 }
-
-# Only add BrowsableAPI in debug mode
-if DEBUG:
-    REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"].append(
-        "rest_framework.renderers.BrowsableAPIRenderer"
-    )
