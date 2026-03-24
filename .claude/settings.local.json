@@ -33,7 +33,9 @@
       "Read(//c//**)",
       "Read(//e/Feature Voting System/backend/$HOME/**)",
       "Read(//c/Users/james/OneDrive/Desktop/**)",
-      "Bash(echo $HOME)"
+      "Bash(echo $HOME)",
+      "Bash(curl:*)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings python -c \":*)"
     ]
   }
 }
