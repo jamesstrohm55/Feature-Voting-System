@@ -22,6 +22,10 @@ class SessionIdMiddleware:
         if not request.path.startswith("/api/"):
             return self.get_response(request)
 
+        # Let CORS preflight through — OPTIONS requests don't carry custom headers.
+        if request.method == "OPTIONS":
+            return self.get_response(request)
+
         session_id = (request.headers.get("X-Session-Id") or "").strip()
 
         if not session_id:
