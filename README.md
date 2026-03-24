@@ -52,6 +52,17 @@ Every data operation flows through Django. The React app never touches Supabase 
 - **Responsive** — mobile-first layout with breakpoints at sm/md/lg, 44px touch targets
 - **PWA installable** on mobile and desktop
 
+## Demo Accounts
+
+The seed command creates two fixed accounts for local development and demos:
+
+| Role | Username | Password | Permissions |
+|------|----------|----------|-------------|
+| Regular user | `testuser` | `testpass123` | Submit features, vote, search |
+| Admin | `admin` | `adminpass123` | All of the above + update status, pin, delete features/votes (`is_staff=True`, `is_superuser=True`) |
+
+> **These credentials are for local development only.** Do not use them in production. Generate strong passwords and rotate secrets on any deployed environment.
+
 ## Local Setup
 
 ### Prerequisites
@@ -67,7 +78,7 @@ python -m venv venv
 
 # Activate the virtual environment
 source venv/bin/activate        # macOS / Linux
-source venv/Scripts/activate    # Windows (Git Bash)
+source venv\Scripts\activate.bat    # Windows (Git Bash)
 
 pip install -r requirements.txt
 cp .env.example .env            # Edit .env if connecting to Supabase (see below)
@@ -78,11 +89,7 @@ python manage.py runserver
 
 API runs at `http://localhost:8000/api/`.
 
-**Seeded credentials:**
-| User | Username | Password | Role |
-|------|----------|----------|------|
-| Regular | `demo` | `demo1234` | Regular user |
-| Admin | `admin` | `admin1234` | Staff (`is_staff=True`) |
+**Seeded credentials:** See [Demo Accounts](#demo-accounts) above.
 
 ### Frontend
 

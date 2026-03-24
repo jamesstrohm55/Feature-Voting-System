@@ -90,6 +90,22 @@ SEED_FEATURES = [
     },
 ]
 
+# Fixed demo accounts — idempotent via get_or_create.
+DEMO_ACCOUNTS = [
+    {
+        "username": "testuser",
+        "password": "testpass123",
+        "is_staff": False,
+        "is_superuser": False,
+    },
+    {
+        "username": "admin",
+        "password": "adminpass123",
+        "is_staff": True,
+        "is_superuser": True,
+    },
+]
+
 
 class Command(BaseCommand):
     help = "Seed the database with realistic demo data."
@@ -101,65 +117,77 @@ class Command(BaseCommand):
             help="Delete all existing data before seeding.",
         )
 
+    def _ensure_demo_accounts(self):
+        for acct in DEMO_ACCOUNTS:
+            user, created = User.objects.get_or_create(
+                username=acct["username"],
+                defaults={
+                    "is_staff": acct["is_staff"],
+                    "is_superuser": acct["is_superuser"],
+                },
+            )
+            # Always reset password and flags so they stay in sync.
+            user.set_password(acct["password"])
+            user.is_staff = acct["is_staff"]
+            user.is_superuser = acct["is_superuser"]
+            user.save()
+
+            label = "created" if created else "updated"
+            self.stdout.write(f"  Account '{acct['username']}' {label}.")
+
     def handle(self, *args, **options):
         if options["flush"]:
             count = FeatureRequest.objects.count()
             Vote.objects.all().delete()
             FeatureRequest.objects.all().delete()
-            # Only delete seed users, not all users.
             User.objects.filter(username__startswith="seed-").delete()
             self.stdout.write(f"Flushed {count} features and seed users.")
 
+        # Always ensure demo accounts exist regardless of --flush.
+        self._ensure_demo_accounts()
+
         if FeatureRequest.objects.exists():
             self.stdout.write(
-                self.style.WARNING("Data already exists. Use --flush to re-seed.")
+                self.style.WARNING("Feature data already exists. Use --flush to re-seed.")
             )
-            return
-
-        with transaction.atomic():
-            # Create two known users for manual testing.
-            demo_user, _ = User.objects.get_or_create(
-                username="demo",
-                defaults={"is_staff": False},
-            )
-            demo_user.set_password("demo1234")
-            demo_user.save()
-
-            admin_user, _ = User.objects.get_or_create(
-                username="admin",
-                defaults={"is_staff": True},
-            )
-            admin_user.set_password("admin1234")
-            admin_user.save()
-
-            # Create distinct authors per feature, plus a pool of voters.
-            authors = [
-                User.objects.create_user(username=f"seed-author-{i}", password="seed1234")
-                for i in range(len(SEED_FEATURES))
-            ]
-            voters = [
-                User.objects.create_user(username=f"seed-voter-{i}", password="seed1234")
-                for i in range(20)
-            ]
-
-            for i, spec in enumerate(SEED_FEATURES):
-                feature = FeatureRequest.objects.create(
-                    title=spec["title"],
-                    description=spec["description"],
-                    author=authors[i],
-                    status=spec.get("status", "under_review"),
-                    vote_count=spec["votes"],
-                )
-
-                for v in range(spec["votes"]):
-                    Vote.objects.create(
-                        user=voters[v % len(voters)],
-                        feature_request=feature,
+        else:
+            with transaction.atomic():
+                authors = [
+                    User.objects.create_user(
+                        username=f"seed-author-{i}", password="seed1234"
                     )
+                    for i in range(len(SEED_FEATURES))
+                ]
+                voters = [
+                    User.objects.create_user(
+                        username=f"seed-voter-{i}", password="seed1234"
+                    )
+                    for i in range(20)
+                ]
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Seeded {len(SEED_FEATURES)} features with votes.\n"
-            f"\n"
-            f"  Demo user:  username=demo   password=demo1234\n"
-            f"  Admin user: username=admin  password=admin1234  (is_staff=True)"
-        ))
+                for i, spec in enumerate(SEED_FEATURES):
+                    feature = FeatureRequest.objects.create(
+                        title=spec["title"],
+                        description=spec["description"],
+                        author=authors[i],
+                        status=spec.get("status", "under_review"),
+                        vote_count=spec["votes"],
+                    )
+                    for v in range(spec["votes"]):
+                        Vote.objects.create(
+                            user=voters[v % len(voters)],
+                            feature_request=feature,
+                        )
+
+            self.stdout.write(self.style.SUCCESS(
+                f"Seeded {len(SEED_FEATURES)} features with votes."
+            ))
+
+        self.stdout.write(
+            "\n"
+            "-------------------------------------------\n"
+            "  Demo Accounts\n"
+            "  Regular user  ->  testuser / testpass123\n"
+            "  Admin         ->  admin / adminpass123\n"
+            "-------------------------------------------"
+        )
