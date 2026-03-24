@@ -14,8 +14,14 @@ const FILTERS: { value: Filter; label: string; active: string; inactive: string 
   { value: "shipped",      label: "Shipped",        active: "bg-green-600 text-white",         inactive: "bg-white text-green-700 hover:bg-green-50" },
 ];
 
-export function FeatureList() {
-  const { data: features, isLoading, error } = useFeatures();
+interface Props {
+  search: string;
+}
+
+export function FeatureList({ search }: Props) {
+  const { data: features, isLoading, isFetching, error } = useFeatures(
+    search || undefined
+  );
   const [filter, setFilter] = useState<Filter>("all");
 
   if (isLoading) {
@@ -49,7 +55,14 @@ export function FeatureList() {
   }
 
   if (!features || features.length === 0) {
-    return <EmptyState />;
+    return search ? (
+      <EmptyState
+        heading="No features match your search"
+        message={`Nothing found for "${search}". Try a different term.`}
+      />
+    ) : (
+      <EmptyState />
+    );
   }
 
   const filtered = filter === "all"
@@ -75,10 +88,15 @@ export function FeatureList() {
         ))}
       </div>
 
-      <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wider">
-        {filtered.length} feature request{filtered.length !== 1 && "s"}
-        {filter !== "all" && ` · ${FILTERS.find((f) => f.value === filter)!.label}`}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wider">
+          {filtered.length} feature request{filtered.length !== 1 && "s"}
+          {filter !== "all" && ` · ${FILTERS.find((f) => f.value === filter)!.label}`}
+        </h2>
+        {isFetching && !isLoading && (
+          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" role="status" aria-label="Updating results" />
+        )}
+      </div>
 
       {filtered.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white p-8 text-center">

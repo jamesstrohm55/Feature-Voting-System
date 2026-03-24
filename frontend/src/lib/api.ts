@@ -38,7 +38,10 @@ export class ApiError extends Error {
 }
 
 export const api = {
-  getFeatures: () => request<FeatureResponse[]>("/features/"),
+  getFeatures: (search?: string) => {
+    const params = search ? `?search=${encodeURIComponent(search)}` : "";
+    return request<FeatureResponse[]>(`/features/${params}`);
+  },
 
   createFeature: (data: { title: string; description: string }) =>
     request<FeatureResponse>("/features/", {

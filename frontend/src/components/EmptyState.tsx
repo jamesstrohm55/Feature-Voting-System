@@ -1,4 +1,12 @@
-export function EmptyState() {
+interface Props {
+  heading?: string;
+  message?: string;
+}
+
+export function EmptyState({
+  heading = "No features yet",
+  message = "Be the first to submit a feature request!",
+}: Props) {
   return (
     <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white p-8 text-center sm:p-12">
       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-50">
@@ -13,14 +21,12 @@ export function EmptyState() {
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
-            d="M12 4.5v15m7.5-7.5h-15"
+            d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
           />
         </svg>
       </div>
-      <h3 className="text-sm font-semibold text-slate-900">No features yet</h3>
-      <p className="mt-1 text-sm text-slate-500">
-        Be the first to submit a feature request!
-      </p>
+      <h3 className="text-sm font-semibold text-slate-900">{heading}</h3>
+      <p className="mt-1 text-sm text-slate-500">{message}</p>
     </div>
   );
 }
