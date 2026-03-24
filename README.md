@@ -1,6 +1,8 @@
 # FeatureVote
 
-Full-stack feature voting system. Users submit feature requests, browse what others have proposed, upvote the ones they care about, and see everything ranked by popularity. Built with Django, React, and Supabase Postgres.
+Full-stack feature voting system with real authentication and role-based admin controls. Users register, log in, submit feature requests, browse what others have proposed, and upvote the ones they care about. Staff users manage status labels, pin important features, and moderate content. Everything is ranked by popularity with pinned features always at the top. Built with Django, React, and Supabase Postgres.
+
+**Live:** [feature-voting-system.vercel.app](https://feature-voting-system.vercel.app)
 
 ## Architecture
 
@@ -8,10 +10,18 @@ Full-stack feature voting system. Users submit feature requests, browse what oth
 React (Vite + TypeScript)  →  Django REST Framework  →  Supabase Postgres
          ↑                            ↑                        ↑
    TanStack Query              sole API backend          managed database
-   Tailwind CSS v4            session middleware          standard Postgres
-   Zod validation             DRF serializers             no vendor lock-in
-   Plus Jakarta Sans          13 automated tests
+   Tailwind CSS v4             TokenAuthentication        standard Postgres
+   Zod validation              role-based permissions     no vendor lock-in
+   Plus Jakarta Sans           41 automated tests
 ```
+
+**Auth flow:**
+1. User registers or logs in via `POST /api/auth/register/` or `/api/auth/login/`
+2. Server returns a DRF `Token` — stored in localStorage on the client
+3. Every subsequent request includes `Authorization: Token <key>` header
+4. DRF's `TokenAuthentication` resolves the token to a `User` on every request
+5. `IsAuthenticated` is the default permission — unauthenticated requests get `401`
+6. Staff-only endpoints check `request.user.is_staff` — non-staff gets `403`
 
 Every data operation flows through Django. The React app never touches Supabase directly — no client SDK, no direct queries, no split authority over data. One backend, one source of truth.
 
@@ -19,20 +29,26 @@ Every data operation flows through Django. The React app never touches Supabase 
 
 **Supabase as managed Postgres.** Supabase gives us a production-ready Postgres instance with zero ops — connection pooling, backups, and a dashboard included. But we treat it strictly as a database. Django connects via a standard `DATABASE_URL` through `psycopg2`. No Supabase client libraries exist anywhere in this project. If we swapped Supabase for any other Postgres host, the only change is an environment variable.
 
-**Django as the application backend.** All business logic — vote integrity, one-vote-per-user enforcement, ranking, validation — lives in Django. DRF handles serialization, content negotiation, and error formatting. This keeps the frontend thin and the invariants centralized. Moving logic into the React layer or splitting it across Supabase RPCs would create two places to enforce the same rules.
+**Django as the application backend.** All business logic — authentication, vote integrity, one-vote-per-user enforcement, ranking, role-based permissions, validation — lives in Django. DRF handles serialization, content negotiation, token auth, and error formatting. This keeps the frontend thin and the invariants centralized. Moving logic into the React layer or splitting it across Supabase RPCs would create two places to enforce the same rules.
 
 **Responsive PWA instead of a native mobile app.** The assignment requires web and mobile accessibility. A separate React Native or Flutter app doubles the surface area for a take-home with no proportional gain. Instead: mobile-first Tailwind layout that works well at every breakpoint, plus a PWA manifest and service worker for home-screen installability. One codebase, both platforms, zero build toolchain overhead.
 
 ## Key Features
 
+- **Real authentication** — username/password registration and login via DRF TokenAuthentication. Tokens stored in localStorage, sent as `Authorization: Token <key>` on every request
+- **Role-based permissions** — staff users (`is_staff=True`) get admin controls; regular users see a clean voting interface with no admin UI
+- **Admin controls** — staff can update feature status (Under Review / Planned / In Progress / Shipped), pin features to the top, delete any feature or vote
+- **Pinned features** — staff can pin important features; pinned items always rank above unpinned regardless of vote count, with a visual amber highlight for all users
 - **Submit feature requests** with title and description, validated on both client (Zod) and server (DRF serializers)
 - **Upvote and un-vote** with a single click — toggle behavior, optimistic UI updates, server reconciliation
-- **Ranked list** ordered by vote count, tiebroken by recency — backed by a B-tree index on `vote_count`
-- **Vote integrity** enforced at the Postgres level: `UniqueConstraint(voter, feature_request)` prevents duplicates even under concurrent requests
+- **Ranked list** ordered by pinned status, then vote count, then recency — backed by B-tree indexes on `is_pinned` and `vote_count`
+- **Vote integrity** enforced at the Postgres level: `UniqueConstraint(user, feature_request)` prevents duplicates even under concurrent requests
 - **Self-vote prevention** — you cannot upvote your own submission
-- **Anonymous session identity** — a UUID generated in the browser and sent as `X-Session-Id` on every request, mapped to a `Voter` row server-side
-- **Optimistic updates** via TanStack Query mutations with rollback on failure
-- **Accessible** — WCAG focus-visible indicators, aria-labels, aria-live regions, reduced-motion support
+- **Search** — server-side `?search=` query parameter filters by title and description (case-insensitive), combined with client-side status filtering
+- **Status filtering** — client-side filter bar with five pills (All, Under Review, Planned, In Progress, Shipped)
+- **Rate limiting** — 5 feature creates/hour and 30 votes/hour per user via DRF throttling, keyed on `user.pk`
+- **Optimistic updates** via TanStack Query mutations with rollback on failure — for voting, status changes, pinning, and deletion
+- **Accessible** — WCAG focus-visible indicators, aria-labels, aria-pressed, aria-live regions, reduced-motion support
 - **Responsive** — mobile-first layout with breakpoints at sm/md/lg, 44px touch targets
 - **PWA installable** on mobile and desktop
 
@@ -56,11 +72,17 @@ source venv/Scripts/activate    # Windows (Git Bash)
 pip install -r requirements.txt
 cp .env.example .env            # Edit .env if connecting to Supabase (see below)
 python manage.py migrate
-python manage.py seed_demo      # Populate 8 realistic features with votes
+python manage.py seed_demo      # Seeds 8 features, 2 test users (see below)
 python manage.py runserver
 ```
 
 API runs at `http://localhost:8000/api/`.
+
+**Seeded credentials:**
+| User | Username | Password | Role |
+|------|----------|----------|------|
+| Regular | `demo` | `demo1234` | Regular user |
+| Admin | `admin` | `admin1234` | Staff (`is_staff=True`) |
 
 ### Frontend
 
@@ -88,39 +110,58 @@ To run against Supabase Postgres, set `DATABASE_URL` to your connection string a
 
 ## API
 
+### Authentication (public)
+
 | Method | Endpoint | Description | Success | Key Errors |
 |--------|----------|-------------|---------|------------|
-| `GET` | `/api/features/` | List all features, ranked by votes | `200` | `401` missing header, `400` malformed UUID |
-| `POST` | `/api/features/` | Create a feature request | `201` | `401` missing header, `400` validation |
-| `POST` | `/api/features/{id}/vote/` | Upvote a feature | `201` | `403` self-vote, `409` duplicate |
-| `DELETE` | `/api/features/{id}/vote/` | Remove your upvote | `200` | `404` not voted |
+| `POST` | `/api/auth/register/` | Create account, return token | `201` | `400` validation, `409` username taken |
+| `POST` | `/api/auth/login/` | Authenticate, return token | `200` | `400` missing fields, `401` bad credentials |
 
-All endpoints require the `X-Session-Id: <uuid>` header. Missing → `401`, malformed → `400`. The frontend handles this transparently via `crypto.randomUUID()` stored in localStorage.
+Response shape for both: `{ "token": "...", "user_id": 1, "username": "..." }`
+
+### Features (authenticated)
+
+All endpoints below require the `Authorization: Token <key>` header. Unauthenticated → `401`.
+
+| Method | Endpoint | Description | Success | Key Errors | Permission |
+|--------|----------|-------------|---------|------------|------------|
+| `GET` | `/api/features/` | List features, ranked by pinned → votes → recency | `200` | — | Any user |
+| `GET` | `/api/features/?search=term` | Search by title/description | `200` | — | Any user |
+| `POST` | `/api/features/` | Create a feature request | `201` | `400` validation, `429` rate limit | Any user |
+| `PATCH` | `/api/features/{id}/` | Update feature status | `200` | `403` non-staff | Staff only |
+| `DELETE` | `/api/features/{id}/` | Delete a feature and its votes | `204` | `403` not owner/staff | Staff or owner |
+| `POST` | `/api/features/{id}/vote/` | Upvote a feature | `201` | `403` self-vote, `409` duplicate, `429` rate limit | Any user |
+| `DELETE` | `/api/features/{id}/vote/` | Remove your upvote | `200` | `404` not voted | Any user |
+| `DELETE` | `/api/features/{id}/vote/{vote_id}/` | Remove any vote (moderation) | `200` | `403` non-staff | Staff only |
+| `PATCH` | `/api/features/{id}/pin/` | Toggle pinned status | `200` | `403` non-staff | Staff only |
 
 ## Data Model
 
 ```
-Voter
-  id              UUID (PK)
-  session_id      CharField(64), unique, indexed
-  created_at      DateTimeField
+User (Django built-in auth.User)
+  id              Integer (PK, auto)
+  username        CharField, unique
+  password        Hashed
+  is_staff        Boolean                          ← admin flag
 
 FeatureRequest
   id              UUID (PK)
   title           CharField(200)
   description     TextField
-  author          FK → Voter
-  vote_count      PositiveIntegerField, indexed    ← denormalized for O(1) ranking
+  author          FK → User
+  status          CharField(20), choices, indexed   ← under_review | planned | in_progress | shipped
+  is_pinned       BooleanField, indexed             ← staff-controlled, always sorted first
+  vote_count      PositiveIntegerField, indexed     ← denormalized for O(1) ranking
   created_at      DateTimeField
   updated_at      DateTimeField
   ── CHECK vote_count >= 0
 
 Vote
   id              UUID (PK)
-  voter           FK → Voter
+  user            FK → User
   feature_request FK → FeatureRequest
   created_at      DateTimeField
-  ── UNIQUE (voter, feature_request)
+  ── UNIQUE (user, feature_request)
 ```
 
 ## Tests
@@ -130,28 +171,33 @@ cd backend
 python manage.py test features.tests -v2
 ```
 
-13 tests across 5 classes, all passing:
+41 tests across 7 classes:
 
 | Class | Tests | What it proves |
 |-------|-------|----------------|
 | `VoteIntegrityTests` | 3 | Duplicate vote → 409, self-vote → 403, unvote without vote → 404 |
-| `VoteCountTests` | 3 | Vote increments to 1, unvote decrements to 0, two voters yield count of 2 (all verified via `refresh_from_db`) |
-| `MiddlewareAndSerializerTests` | 4 | Missing header → 401, malformed UUID → 400, spoofed `author` field ignored, injected `vote_count` ignored |
-| `RankingTests` | 2 | Features returned in descending vote order, tiebroken by most recent first (asserted on id order) |
-| `RaceConditionTests` | 1 | Two threads fire simultaneously via `threading.Barrier` — exactly one 201, one 409, one Vote row, `vote_count` = 1. Skipped on SQLite (shared-cache ignores busy_timeout); runs on Postgres. |
+| `VoteCountTests` | 3 | Vote increments to 1, unvote decrements to 0, two voters yield count of 2 (all via `refresh_from_db`) |
+| `AuthAndSerializerTests` | 8 | Unauthenticated → 401, register + login flow, duplicate register → 409, bad password → 401, spoofed author ignored, injected vote_count ignored, feature create throttled after 5, vote throttled after 30 |
+| `RankingTests` | 6 | Vote count descending order, recency tiebreaker, search by title, search by description, search preserves ranking, empty search returns all |
+| `AdminPermissionTests` | 11 | Staff can update status / non-staff 403, staff can delete any feature / owner can delete own / non-staff 403, staff can delete any vote / non-staff 403, staff can pin / non-staff 403, pinned appears first, response includes is_pinned and is_staff |
+| `AuthAndPermissionTests` | 9 | Unauthenticated → 401, non-staff cannot PATCH status → 403, staff can PATCH status → 200, non-staff cannot delete other's feature → 403, owner can delete own → 204, staff can delete any → 204, non-staff cannot pin → 403, staff can toggle pin → 200, pinned beats high vote count in ranking |
+| `RaceConditionTests` | 1 | Two threads via `threading.Barrier` — exactly one 201 + one 409, one Vote row, `vote_count` = 1. Skipped on SQLite; runs on Postgres. |
 
 ## Technical Decisions
 
 | Decision | What and why |
 |----------|-------------|
+| **Token auth over session auth** | Stateless — no server-side session storage, no CSRF token management. The token is stored in localStorage and sent as a header. Simple to implement, simple to test, works naturally with SPAs and CORS. |
+| **`is_staff` as admin flag** | Django's built-in `is_staff` boolean is sufficient for a two-tier permission model (regular vs admin). A custom Role model or django-guardian adds complexity with no proportional benefit for this scope. |
 | **Denormalized `vote_count`** | Avoids `COUNT(*)` JOIN on every list query. Updated atomically inside `transaction.atomic()` using `F("vote_count") + 1`. The `CheckConstraint` prevents it from going negative. |
 | **`UniqueConstraint` on Vote** | One-vote-per-user-per-feature enforced at the database level. If a race condition hits the application check, the constraint catches it and the view returns `409`. |
-| **Anonymous session identity** | Full auth adds login UI, token management, and password flows — none of which improve the core product for a time-boxed submission. A UUID in localStorage demonstrates the same vote-integrity mechanics. The `Voter` model is a thin shim; replacing it with a real `User` FK is a one-migration change. |
-| **Separate read/write serializers** | `FeatureRequestListSerializer` includes viewer-specific computed fields (`has_voted`, `is_own`). `FeatureRequestCreateSerializer` accepts only `title` and `description` — the `author` is set from `request.voter` server-side, not from client input. |
-| **Batch `has_voted` resolution** | The list view fetches the voter's voted feature IDs in a single query, then passes the set into serializer context. This avoids N+1 queries — one DB hit instead of one per card. |
-| **Explicit `order_by` in the view** | Ranking is `ORDER BY -vote_count, -created_at`, stated at the call site rather than buried in `Meta.ordering`. The `db_index` on `vote_count` lets Postgres satisfy this without a filesort. |
+| **Pinned-first ordering** | `ORDER BY -is_pinned, -vote_count, -created_at` — a product decision that lets admins surface important announcements or urgent requests above the popularity ranking. The `db_index` on `is_pinned` keeps the sort efficient. |
+| **Optimistic updates with rollback** | All mutations (vote, unvote, status change, pin toggle, delete) update the UI instantly via TanStack Query cache manipulation, then reconcile with the server. On error, the previous state is restored. Users never wait for the network. |
+| **Separate read/write serializers** | `FeatureRequestListSerializer` includes viewer-specific computed fields (`has_voted`, `is_own`, `is_staff`). `FeatureRequestCreateSerializer` accepts only `title` and `description` — the `author` is set from `request.user` server-side, not from client input. `FeatureStatusUpdateSerializer` exposes only `status` for the staff PATCH endpoint. |
+| **Batch `has_voted` resolution** | The list view fetches the user's voted feature IDs in a single query, then passes the set into serializer context. This avoids N+1 queries — one DB hit instead of one per card. |
+| **Explicit `order_by` in the view** | Ranking is `ORDER BY -is_pinned, -vote_count, -created_at`, stated at the call site rather than buried in `Meta.ordering`. The indexed columns let Postgres satisfy this without a filesort. |
 | **No signals for vote count** | Vote count updates happen inline in the vote/unvote view, wrapped in `transaction.atomic()`. Signals fail silently, run outside the request's transaction, and obscure the data flow. Inline updates are explicit and testable. |
-| **Middleware UUID validation** | `X-Session-Id` is validated against a UUID regex before hitting the database. Rejects garbage input at the boundary instead of creating junk `Voter` rows. |
+| **Rate limiting keyed on user.pk** | DRF's `SimpleRateThrottle` with `get_cache_key` overridden to use the authenticated user's primary key. 5 creates/hour, 30 votes/hour. Uses LocMemCache in dev — comment notes Redis is needed for multi-process production. |
 | **PWA over native mobile** | A service worker and web manifest get us home-screen installability. The Tailwind layout is mobile-first. This ships in minutes and covers the "accessible on mobile" requirement without a second codebase. |
 | **No pagination** | With fewer than 1,000 expected items for a demo, pagination adds routing and state complexity with no user-facing benefit. Listed as a next step. |
 
@@ -160,40 +206,47 @@ python manage.py test features.tests -v2
 ```
 ├── backend/
 │   ├── config/                  # Django settings, root URL config
-│   │   ├── settings.py          # DATABASE_URL, CORS, DRF config
+│   │   ├── settings.py          # DATABASE_URL, CORS, DRF + TokenAuth config
 │   │   └── urls.py
 │   ├── features/                # Single Django app — all domain logic
-│   │   ├── models.py            # Voter, FeatureRequest, Vote
-│   │   ├── views.py             # list/create, vote/unvote
-│   │   ├── serializers.py       # read + write serializers
-│   │   ├── middleware.py        # X-Session-Id → Voter resolution
-│   │   ├── urls.py              # /api/features/, /api/features/{id}/vote/
-│   │   ├── tests.py             # 13 tests across 5 classes
-│   │   ├── admin.py             # Django admin registration
+│   │   ├── models.py            # FeatureRequest, Vote (FK to auth.User)
+│   │   ├── views.py             # list/create, detail/delete, vote, pin
+│   │   ├── auth_views.py        # register + login endpoints
+│   │   ├── serializers.py       # list, create, status-update serializers
+│   │   ├── throttles.py         # FeatureCreateThrottle, VoteThrottle
+│   │   ├── exceptions.py        # Custom 429 response formatting
+│   │   ├── urls.py              # All API routes
+│   │   ├── tests.py             # 41 tests across 7 classes
+│   │   ├── admin.py             # Django admin with inline status editing
 │   │   └── management/commands/
-│   │       └── seed_demo.py     # Realistic demo data
+│   │       └── seed_demo.py     # 8 features + demo/admin users
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── components/          # Header, SubmitForm, FeatureList, FeatureCard, VoteButton, EmptyState
-│   │   ├── hooks/               # useFeatures (query), useVote (mutations + optimistic updates)
-│   │   ├── lib/                 # api.ts (fetch wrapper), session.ts (UUID), schemas.ts (Zod)
-│   │   ├── App.tsx
-│   │   └── main.tsx             # QueryClientProvider, service worker registration
+│   │   ├── components/          # AuthPage, Header, SubmitForm, FeatureList, FeatureCard, VoteButton, EmptyState
+│   │   ├── hooks/               # useFeatures, useVote, useAdmin
+│   │   ├── lib/                 # api.ts, auth.ts, schemas.ts
+│   │   ├── App.tsx              # Token gate + QueryClientProvider
+│   │   └── main.tsx             # Entry point, service worker registration
 │   ├── public/                  # manifest.json, sw.js, favicon.svg
 │   ├── package.json
+│   ├── vercel.json              # SPA routing config
 │   └── vite.config.ts           # Tailwind plugin, /api proxy to Django
+├── Dockerfile                   # python:3.11-slim + gunicorn
+├── docker-compose.yml           # Backend container (no DB — Supabase is external)
+├── .github/workflows/ci.yml     # Django tests on push/PR
+├── DEPLOYMENT.md                # Vercel + Railway + Supabase deployment guide
 └── README.md
 ```
 
 ## What I'd Build Next (4–8 hours)
 
-- **Real authentication** — swap the `Voter` shim for Django's `User` model, add a lightweight OAuth or magic-link login flow, replace `X-Session-Id` with token-based auth
-- **Cursor pagination** — keyset pagination on `(vote_count, created_at)` for infinite scroll without offset drift
-- **Status labels** — let admins tag features as Planned / In Progress / Shipped to close the feedback loop
-- **Search and filtering** — full-text search on title and description via Postgres `tsvector`, filter by status or date range
+- **OAuth social login** — GitHub and Google via `django-allauth`, letting users sign in without creating a password
+- **Email verification** — require email confirmation on registration before allowing votes
+- **Audit log for admin actions** — record who changed status, pinned, or deleted what and when, viewable by staff
+- **Redis for distributed rate limiting** — swap LocMemCache for `django-redis` so throttle state is shared across gunicorn workers
+- **Cursor pagination** — keyset pagination on `(is_pinned, vote_count, created_at)` for infinite scroll without offset drift
 - **WebSocket vote updates** — Django Channels to push vote count changes to all connected clients in real time
-- **Rate limiting** — throttle feature creation and vote toggling per session to prevent abuse
 - **Dark mode** — Tailwind's `dark:` variant with system preference detection and manual toggle
-- **Production deployment** — Dockerize both services, add a GitHub Actions CI pipeline, deploy frontend to Vercel and backend to Railway or Fly.io
+- **Full-text search** — Postgres `tsvector` index on title and description for ranked relevance instead of `icontains`
