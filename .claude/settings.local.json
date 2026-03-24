@@ -29,7 +29,11 @@
       "Bash(python manage.py makemigrations features -n swap_voter_for_user)",
       "Bash(python manage.py makemigrations features -n add_is_pinned)",
       "Bash(python manage.py seed_demo --flush)",
-      "Bash(python manage.py seed_demo)"
+      "Bash(python manage.py seed_demo)",
+      "Read(//c//**)",
+      "Read(//e/Feature Voting System/backend/$HOME/**)",
+      "Read(//c/Users/james/OneDrive/Desktop/**)",
+      "Bash(echo $HOME)"
     ]
   }
 }
