@@ -82,6 +82,22 @@ export const api = {
     request<VoteResponse>(`/features/${featureId}/vote/`, {
       method: "DELETE",
     }),
+
+  updateStatus: (featureId: string, status: FeatureStatus) =>
+    request<FeatureResponse>(`/features/${featureId}/`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  deleteFeature: (featureId: string) =>
+    request<void>(`/features/${featureId}/`, {
+      method: "DELETE",
+    }),
+
+  togglePin: (featureId: string) =>
+    request<{ is_pinned: boolean }>(`/features/${featureId}/pin/`, {
+      method: "PATCH",
+    }),
 };
 
 export type FeatureStatus = "under_review" | "planned" | "in_progress" | "shipped";
