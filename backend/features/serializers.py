@@ -9,6 +9,7 @@ class FeatureRequestListSerializer(serializers.ModelSerializer):
     author_username = serializers.CharField(source="author.username", read_only=True)
     has_voted = serializers.SerializerMethodField()
     is_own = serializers.SerializerMethodField()
+    is_staff = serializers.SerializerMethodField()
 
     class Meta:
         model = FeatureRequest
@@ -18,9 +19,11 @@ class FeatureRequestListSerializer(serializers.ModelSerializer):
             "description",
             "author_username",
             "status",
+            "is_pinned",
             "vote_count",
             "has_voted",
             "is_own",
+            "is_staff",
             "created_at",
         ]
         read_only_fields = fields
@@ -39,6 +42,12 @@ class FeatureRequestListSerializer(serializers.ModelSerializer):
         if not user:
             return False
         return obj.author_id == user.id
+
+    def get_is_staff(self, obj):
+        user = self.context.get("user")
+        if not user:
+            return False
+        return user.is_staff
 
 
 class FeatureRequestCreateSerializer(serializers.ModelSerializer):
@@ -59,3 +68,11 @@ class FeatureRequestCreateSerializer(serializers.ModelSerializer):
                 "Description must be at least 10 characters."
             )
         return value.strip()
+
+
+class FeatureStatusUpdateSerializer(serializers.ModelSerializer):
+    """Staff-only serializer for updating feature status."""
+
+    class Meta:
+        model = FeatureRequest
+        fields = ["status"]

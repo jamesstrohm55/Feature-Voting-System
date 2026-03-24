@@ -25,12 +25,13 @@ class FeatureRequest(models.Model):
         default=Status.UNDER_REVIEW,
         db_index=True,
     )
+    is_pinned = models.BooleanField(default=False, db_index=True)
     vote_count = models.PositiveIntegerField(default=0, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-vote_count", "-created_at"]
+        ordering = ["-is_pinned", "-vote_count", "-created_at"]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(vote_count__gte=0),

@@ -9,6 +9,22 @@ export const featureStatusSchema = z.union([
 
 export type FeatureStatus = z.infer<typeof featureStatusSchema>;
 
+export const featureResponseSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  author_username: z.string(),
+  status: featureStatusSchema,
+  is_pinned: z.boolean(),
+  vote_count: z.number(),
+  has_voted: z.boolean(),
+  is_own: z.boolean(),
+  is_staff: z.boolean(),
+  created_at: z.string(),
+});
+
+export type FeatureResponseData = z.infer<typeof featureResponseSchema>;
+
 /** Client-side validation schema for the feature submission form. */
 export const featureFormSchema = z.object({
   title: z
@@ -22,3 +38,15 @@ export const featureFormSchema = z.object({
 });
 
 export type FeatureFormData = z.infer<typeof featureFormSchema>;
+
+export const authFormSchema = z.object({
+  username: z
+    .string()
+    .min(1, "Username is required")
+    .max(150, "Username must be 150 characters or fewer"),
+  password: z
+    .string()
+    .min(6, "Password must be at least 6 characters"),
+});
+
+export type AuthFormData = z.infer<typeof authFormSchema>;

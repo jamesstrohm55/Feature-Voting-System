@@ -26,7 +26,8 @@
       "Bash(docker build:*)",
       "Bash(source venv/Scripts/activate __NEW_LINE_73ddf5b6c64665d2__ echo \"=== collectstatic \\(simulates Dockerfile RUN\\) ===\" DJANGO_SECRET_KEY=build-placeholder python manage.py collectstatic --noinput)",
       "Bash(DJANGO_SECRET_KEY=build-placeholder python manage.py collectstatic --noinput)",
-      "Bash(python manage.py makemigrations features -n swap_voter_for_user)"
+      "Bash(python manage.py makemigrations features -n swap_voter_for_user)",
+      "Bash(python manage.py makemigrations features -n add_is_pinned)"
     ]
   }
 }
