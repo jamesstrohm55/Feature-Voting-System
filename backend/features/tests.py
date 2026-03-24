@@ -134,6 +134,9 @@ class MiddlewareAndSerializerTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
+        # Clear the throttle cache so rate-limit state doesn't leak between tests.
+        from django.core.cache import cache
+        cache.clear()
 
     @staticmethod
     def _make_session_id() -> str:
@@ -193,6 +196,63 @@ class MiddlewareAndSerializerTests(APITestCase):
 
         feature = FeatureRequest.objects.get(id=resp.data["id"])
         self.assertEqual(feature.vote_count, 0)
+
+    # ── rate limiting ────────────────────────────────────────────────────
+
+    def test_feature_create_throttled_after_5(self):
+        session = self._make_session_id()
+
+        for i in range(5):
+            resp = self.client.post(
+                "/api/features/",
+                data={
+                    "title": f"Feature {i}",
+                    "description": "This description is long enough to pass validation.",
+                },
+                format="json",
+                HTTP_X_SESSION_ID=session,
+            )
+            self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        resp = self.client.post(
+            "/api/features/",
+            data={
+                "title": "Feature 6",
+                "description": "This description is long enough to pass validation.",
+            },
+            format="json",
+            HTTP_X_SESSION_ID=session,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertIn("Rate limit exceeded", resp.data["detail"])
+
+    def test_vote_throttled_after_30(self):
+        session = self._make_session_id()
+
+        # Create 31 features from a different author to vote on.
+        author = Voter.objects.create(session_id=self._make_session_id())
+        features = [
+            FeatureRequest.objects.create(
+                title=f"Votable {i}",
+                description="Long enough description for validation.",
+                author=author,
+            )
+            for i in range(31)
+        ]
+
+        for i in range(30):
+            resp = self.client.post(
+                f"/api/features/{features[i].id}/vote/",
+                HTTP_X_SESSION_ID=session,
+            )
+            self.assertEqual(resp.status_code, status.HTTP_201_CREATED, f"Vote {i} failed")
+
+        resp = self.client.post(
+            f"/api/features/{features[30].id}/vote/",
+            HTTP_X_SESSION_ID=session,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertIn("Rate limit exceeded", resp.data["detail"])
 
 
 class RankingTests(APITestCase):

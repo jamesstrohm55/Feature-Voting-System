@@ -102,10 +102,12 @@ CORS_ALLOW_HEADERS = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [],
+    "DEFAULT_THROTTLE_CLASSES": [],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ]
     + (
         ["rest_framework.renderers.BrowsableAPIRenderer"] if DEBUG else []
     ),
+    "EXCEPTION_HANDLER": "features.exceptions.custom_exception_handler",
 }

@@ -2,13 +2,19 @@ from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.response import Response
 
 from .models import FeatureRequest, Vote
 from .serializers import (
     FeatureRequestCreateSerializer,
     FeatureRequestListSerializer,
+)
+from .throttles import FeatureCreateThrottle, VoteThrottle
+
+_THROTTLED_RESPONSE = Response(
+    {"detail": "Rate limit exceeded. Try again later."},
+    status=status.HTTP_429_TOO_MANY_REQUESTS,
 )
 
 
@@ -48,7 +54,11 @@ def feature_list_create(request):
         )
         return Response(serializer.data)
 
-    # POST
+    # POST — rate-limited to 5/hour per session.
+    throttle = FeatureCreateThrottle()
+    if not throttle.allow_request(request, None):
+        return _THROTTLED_RESPONSE
+
     serializer = FeatureRequestCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     feature = serializer.save(author=request.voter)
@@ -65,6 +75,7 @@ def feature_list_create(request):
 
 
 @api_view(["POST", "DELETE"])
+@throttle_classes([VoteThrottle])
 def feature_vote(request, feature_id):
     """POST: upvote a feature. DELETE: remove upvote."""
     feature = get_object_or_404(FeatureRequest, id=feature_id)
