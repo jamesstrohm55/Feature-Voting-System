@@ -1,6 +1,8 @@
 import { getSessionId } from "./session";
 
-const BASE_URL = "/api";
+const BASE_URL = import.meta.env.PROD
+  ? "https://feature-voting-system-production.up.railway.app/api"
+  : "/api";
 
 /**
  * Thin fetch wrapper that injects the X-Session-Id header
