@@ -22,7 +22,10 @@
       "Bash(python manage.py makemigrations features -n add_status_to_featurerequest)",
       "Bash(curl -s http://127.0.0.1:8000/api/features/ -H \"X-Session-Id: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\")",
       "Bash(python -c \"import sys,json; [print\\(f''''{f[\"\"title\"\"][:30]:30s} {f[\"\"status\"\"]}''''\\) for f in json.load\\(sys.stdin\\)]\")",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(docker build:*)",
+      "Bash(source venv/Scripts/activate __NEW_LINE_73ddf5b6c64665d2__ echo \"=== collectstatic \\(simulates Dockerfile RUN\\) ===\" DJANGO_SECRET_KEY=build-placeholder python manage.py collectstatic --noinput)",
+      "Bash(DJANGO_SECRET_KEY=build-placeholder python manage.py collectstatic --noinput)"
     ]
   }
 }

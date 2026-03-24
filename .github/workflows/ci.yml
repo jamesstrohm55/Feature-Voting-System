@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Run migrations
+        working-directory: backend
+        run: python manage.py migrate --no-input
+        env:
+          DJANGO_SECRET_KEY: ci-test-key
+
+      - name: Run tests
+        working-directory: backend
+        run: python manage.py test features.tests -v2
+        env:
+          DJANGO_SECRET_KEY: ci-test-key

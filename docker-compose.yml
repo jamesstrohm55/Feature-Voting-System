@@ -1,0 +1,14 @@
+# Local production-like setup. No database container — Supabase is the DB.
+# For local dev, use the backend/venv + runserver workflow instead.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    environment:
+      - DEBUG=False
