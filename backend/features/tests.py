@@ -253,6 +253,58 @@ class RankingTests(APITestCase):
         self.assertEqual(ids[0], str(f_new.id))
         self.assertEqual(ids[1], str(f_old.id))
 
+    # ── search tests ─────────────────────────────────────────────────────
+
+    def _search_ids(self, query):
+        resp = self.client.get(
+            "/api/features/",
+            {"search": query},
+            HTTP_X_SESSION_ID=self.viewer_session,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        return [f["id"] for f in resp.data]
+
+    def test_search_filters_by_title(self):
+        self._make_feature("Dark mode support")
+        fb = self._make_feature("Export to CSV")
+
+        ids = self._search_ids("csv")
+        self.assertEqual(ids, [str(fb.id)])
+
+    def test_search_filters_by_description(self):
+        fa = FeatureRequest.objects.create(
+            title="Alpha",
+            description="Integrate with Slack for notifications.",
+            author=Voter.objects.create(session_id=str(uuid.uuid4())),
+        )
+        FeatureRequest.objects.create(
+            title="Beta",
+            description="Generic description that is long enough.",
+            author=Voter.objects.create(session_id=str(uuid.uuid4())),
+        )
+
+        ids = self._search_ids("slack")
+        self.assertEqual(ids, [str(fa.id)])
+
+    def test_search_preserves_ranking(self):
+        fa = self._make_feature("Dark mode widget")
+        fb = self._make_feature("Dark mode toggle")
+        FeatureRequest.objects.filter(pk=fa.pk).update(vote_count=1)
+        FeatureRequest.objects.filter(pk=fb.pk).update(vote_count=5)
+
+        ids = self._search_ids("dark mode")
+        # fb has more votes, should come first.
+        self.assertEqual(ids, [str(fb.id), str(fa.id)])
+
+    def test_empty_search_returns_all(self):
+        self._make_feature("One")
+        self._make_feature("Two")
+
+        ids_no_param = self._list_ids()
+        ids_empty = self._search_ids("")
+
+        self.assertEqual(ids_no_param, ids_empty)
+
 
 @unittest.skipIf(
     _using_sqlite(),

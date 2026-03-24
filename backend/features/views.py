@@ -1,5 +1,5 @@
 from django.db import IntegrityError, transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -21,8 +21,15 @@ def feature_list_create(request):
         features = (
             FeatureRequest.objects
             .select_related("author")
-            .order_by("-vote_count", "-created_at")
         )
+
+        search = request.query_params.get("search", "").strip()
+        if search:
+            features = features.filter(
+                Q(title__icontains=search) | Q(description__icontains=search)
+            )
+
+        features = features.order_by("-vote_count", "-created_at")
 
         # Single query to resolve has_voted for every card — avoids N+1.
         voter_voted_feature_ids = set(
