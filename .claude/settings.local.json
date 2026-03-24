@@ -9,7 +9,14 @@
       "Bash(python manage.py makemigrations features)",
       "Bash(python manage.py migrate)",
       "Bash(npm create:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Read(//c/Users/james/.claude/plugins/cache/ui-ux-pro-max-skill/ui-ux-pro-max/2.0.1/**)",
+      "Bash(python3 scripts/search.py \"feature voting SaaS tool productivity modern clean minimal\" --design-system -p \"FeatureVote\")",
+      "Bash(python scripts/search.py \"feature voting SaaS tool productivity modern clean minimal\" --design-system -p \"FeatureVote\")",
+      "Bash(python \"src/ui-ux-pro-max/scripts/search.py\" \"feature voting SaaS tool productivity modern clean minimal\" --design-system -p \"FeatureVote\")",
+      "Bash(npm run:*)",
+      "Bash(rm:*)",
+      "Bash(npx vite:*)"
     ]
   }
 }

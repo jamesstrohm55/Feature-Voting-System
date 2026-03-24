@@ -40,7 +40,7 @@ export function SubmitForm() {
       <div className="mt-6 mb-8">
         <button
           onClick={() => setIsOpen(true)}
-          className="w-full rounded-xl border-2 border-dashed border-indigo-200 bg-white px-6 py-4 text-indigo-600 font-medium transition-all hover:border-indigo-400 hover:bg-indigo-50 hover:shadow-sm cursor-pointer"
+          className="w-full rounded-xl border-2 border-dashed border-blue-200 bg-white px-6 py-4 text-blue-600 font-medium transition-colors duration-150 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
         >
           + Submit a Feature Request
         </button>
@@ -51,14 +51,14 @@ export function SubmitForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="mt-6 mb-8 rounded-xl border border-indigo-200 bg-white p-6 shadow-sm"
+      className="mt-6 mb-8 rounded-xl border border-blue-200 bg-white p-5 shadow-sm sm:p-6 md:p-8"
     >
-      <h2 className="mb-4 text-base font-semibold text-gray-900">
+      <h2 className="mb-4 text-base font-semibold text-slate-900">
         New Feature Request
       </h2>
 
       <div className="mb-4">
-        <label htmlFor="title" className="mb-1 block text-sm font-medium text-gray-700">
+        <label htmlFor="title" className="mb-1.5 block text-sm font-medium text-slate-700">
           Title
         </label>
         <input
@@ -67,16 +67,20 @@ export function SubmitForm() {
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
           placeholder="Short, descriptive title"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          aria-invalid={!!errors.title}
+          aria-describedby={errors.title ? "title-error" : undefined}
+          className="h-11 w-full rounded-lg border border-gray-300 px-3 text-sm text-slate-900 placeholder-gray-400 transition-colors duration-150 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           maxLength={200}
         />
         {errors.title && (
-          <p className="mt-1 text-xs text-red-600">{errors.title}</p>
+          <p id="title-error" role="alert" className="mt-1.5 text-xs text-red-600">
+            {errors.title}
+          </p>
         )}
       </div>
 
       <div className="mb-4">
-        <label htmlFor="description" className="mb-1 block text-sm font-medium text-gray-700">
+        <label htmlFor="description" className="mb-1.5 block text-sm font-medium text-slate-700">
           Description
         </label>
         <textarea
@@ -85,16 +89,20 @@ export function SubmitForm() {
           onChange={(e) => setForm({ ...form, description: e.target.value })}
           placeholder="Why is this feature important? How would it work?"
           rows={3}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
+          aria-invalid={!!errors.description}
+          aria-describedby={errors.description ? "desc-error" : undefined}
+          className="w-full rounded-lg border border-gray-300 px-3 py-3 text-sm text-slate-900 placeholder-gray-400 transition-colors duration-150 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
           maxLength={2000}
         />
         {errors.description && (
-          <p className="mt-1 text-xs text-red-600">{errors.description}</p>
+          <p id="desc-error" role="alert" className="mt-1.5 text-xs text-red-600">
+            {errors.description}
+          </p>
         )}
       </div>
 
       {mutation.error && (
-        <p className="mb-3 text-xs text-red-600">
+        <p role="alert" className="mb-3 text-sm text-red-600">
           {mutation.error instanceof Error ? mutation.error.message : "Failed to submit"}
         </p>
       )}
@@ -106,14 +114,14 @@ export function SubmitForm() {
             setIsOpen(false);
             setErrors({});
           }}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 cursor-pointer"
+          className="rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors duration-150 hover:bg-gray-100 cursor-pointer"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
+          className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
         >
           {mutation.isPending ? "Submitting..." : "Submit"}
         </button>
