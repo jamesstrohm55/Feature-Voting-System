@@ -38,8 +38,8 @@ def feature_list_create(request):
         features = features.order_by("-vote_count", "-created_at")
 
         # Single query to resolve has_voted for every card — avoids N+1.
-        voter_voted_feature_ids = set(
-            Vote.objects.filter(voter=request.voter).values_list(
+        user_voted_feature_ids = set(
+            Vote.objects.filter(user=request.user).values_list(
                 "feature_request_id", flat=True
             )
         )
@@ -48,27 +48,27 @@ def feature_list_create(request):
             features,
             many=True,
             context={
-                "voter": request.voter,
-                "voter_voted_feature_ids": voter_voted_feature_ids,
+                "user": request.user,
+                "user_voted_feature_ids": user_voted_feature_ids,
             },
         )
         return Response(serializer.data)
 
-    # POST — rate-limited to 5/hour per session.
+    # POST — rate-limited to 5/hour per user.
     throttle = FeatureCreateThrottle()
     if not throttle.allow_request(request, None):
         return _THROTTLED_RESPONSE
 
     serializer = FeatureRequestCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    feature = serializer.save(author=request.voter)
+    feature = serializer.save(author=request.user)
 
     # Return the full read representation
     read_serializer = FeatureRequestListSerializer(
         feature,
         context={
-            "voter": request.voter,
-            "voter_voted_feature_ids": set(),
+            "user": request.user,
+            "user_voted_feature_ids": set(),
         },
     )
     return Response(read_serializer.data, status=status.HTTP_201_CREATED)
@@ -82,7 +82,7 @@ def feature_vote(request, feature_id):
 
     if request.method == "POST":
         # Cannot vote on own feature
-        if feature.author_id == request.voter.id:
+        if feature.author_id == request.user.id:
             return Response(
                 {"detail": "You cannot vote on your own feature request."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -90,7 +90,7 @@ def feature_vote(request, feature_id):
 
         try:
             with transaction.atomic():
-                Vote.objects.create(voter=request.voter, feature_request=feature)
+                Vote.objects.create(user=request.user, feature_request=feature)
                 FeatureRequest.objects.filter(id=feature.id).update(
                     vote_count=F("vote_count") + 1
                 )
@@ -109,7 +109,7 @@ def feature_vote(request, feature_id):
     # DELETE
     try:
         with transaction.atomic():
-            vote = Vote.objects.get(voter=request.voter, feature_request=feature)
+            vote = Vote.objects.get(user=request.user, feature_request=feature)
             vote.delete()
             FeatureRequest.objects.filter(id=feature.id).update(
                 vote_count=F("vote_count") - 1

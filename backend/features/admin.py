@@ -1,12 +1,6 @@
 from django.contrib import admin
 
-from .models import FeatureRequest, Vote, Voter
-
-
-@admin.register(Voter)
-class VoterAdmin(admin.ModelAdmin):
-    list_display = ["session_id", "created_at"]
-    readonly_fields = ["id", "created_at"]
+from .models import FeatureRequest, Vote
 
 
 @admin.register(FeatureRequest)
@@ -18,5 +12,5 @@ class FeatureRequestAdmin(admin.ModelAdmin):
 
 @admin.register(Vote)
 class VoteAdmin(admin.ModelAdmin):
-    list_display = ["voter", "feature_request", "created_at"]
+    list_display = ["user", "feature_request", "created_at"]
     readonly_fields = ["id", "created_at"]

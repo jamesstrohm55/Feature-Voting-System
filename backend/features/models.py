@@ -1,17 +1,7 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
-
-
-class Voter(models.Model):
-    """Anonymous voter identified by a client-generated session ID."""
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    session_id = models.CharField(max_length=64, unique=True, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Voter({self.session_id[:8]}...)"
 
 
 class FeatureRequest(models.Model):
@@ -27,7 +17,7 @@ class FeatureRequest(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField()
     author = models.ForeignKey(
-        Voter, on_delete=models.CASCADE, related_name="feature_requests"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="feature_requests"
     )
     status = models.CharField(
         max_length=20,
@@ -53,10 +43,12 @@ class FeatureRequest(models.Model):
 
 
 class Vote(models.Model):
-    """A single upvote from a voter on a feature request."""
+    """A single upvote from a user on a feature request."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    voter = models.ForeignKey(Voter, on_delete=models.CASCADE, related_name="votes")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="votes"
+    )
     feature_request = models.ForeignKey(
         FeatureRequest, on_delete=models.CASCADE, related_name="votes"
     )
@@ -65,10 +57,10 @@ class Vote(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["voter", "feature_request"],
-                name="unique_vote_per_voter_per_feature",
+                fields=["user", "feature_request"],
+                name="unique_vote_per_user_per_feature",
             ),
         ]
 
     def __str__(self):
-        return f"Vote({self.voter} -> {self.feature_request})"
+        return f"Vote({self.user} -> {self.feature_request})"

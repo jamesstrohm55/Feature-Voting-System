@@ -7,12 +7,12 @@ Usage:
     python manage.py seed_demo --flush   # wipe and re-seed
 """
 
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from features.models import FeatureRequest, Vote, Voter
+from features.models import FeatureRequest, Vote
 
-# Realistic feature requests for a product feedback board.
 SEED_FEATURES = [
     {
         "title": "Dark mode support",
@@ -22,6 +22,7 @@ SEED_FEATURES = [
             "allow manual override."
         ),
         "votes": 14,
+        "status": "in_progress",
     },
     {
         "title": "Export data to CSV",
@@ -31,6 +32,7 @@ SEED_FEATURES = [
             "date as columns."
         ),
         "votes": 9,
+        "status": "planned",
     },
     {
         "title": "Keyboard shortcuts",
@@ -39,6 +41,7 @@ SEED_FEATURES = [
             "J/K to move between features, U to upvote, N to open the new feature form."
         ),
         "votes": 7,
+        "status": "shipped",
     },
     {
         "title": "Slack integration for new submissions",
@@ -103,8 +106,9 @@ class Command(BaseCommand):
             count = FeatureRequest.objects.count()
             Vote.objects.all().delete()
             FeatureRequest.objects.all().delete()
-            Voter.objects.all().delete()
-            self.stdout.write(f"Flushed {count} features and all related data.")
+            # Only delete seed users, not all users.
+            User.objects.filter(username__startswith="seed-").delete()
+            self.stdout.write(f"Flushed {count} features and seed users.")
 
         if FeatureRequest.objects.exists():
             self.stdout.write(
@@ -113,13 +117,28 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
-            # Create distinct voters — one author per feature, plus a pool of voters.
+            # Create two known users for manual testing.
+            demo_user, _ = User.objects.get_or_create(
+                username="demo",
+                defaults={"is_staff": False},
+            )
+            demo_user.set_password("demo1234")
+            demo_user.save()
+
+            admin_user, _ = User.objects.get_or_create(
+                username="admin",
+                defaults={"is_staff": True},
+            )
+            admin_user.set_password("admin1234")
+            admin_user.save()
+
+            # Create distinct authors per feature, plus a pool of voters.
             authors = [
-                Voter.objects.create(session_id=f"seed-author-{i}")
+                User.objects.create_user(username=f"seed-author-{i}", password="seed1234")
                 for i in range(len(SEED_FEATURES))
             ]
             voters = [
-                Voter.objects.create(session_id=f"seed-voter-{i}")
+                User.objects.create_user(username=f"seed-voter-{i}", password="seed1234")
                 for i in range(20)
             ]
 
@@ -128,19 +147,19 @@ class Command(BaseCommand):
                     title=spec["title"],
                     description=spec["description"],
                     author=authors[i],
+                    status=spec.get("status", "under_review"),
                     vote_count=spec["votes"],
                 )
 
-                # Distribute votes across the voter pool. Each voter votes at most
-                # once per feature (enforced by the unique constraint).
                 for v in range(spec["votes"]):
                     Vote.objects.create(
-                        voter=voters[v % len(voters)],
+                        user=voters[v % len(voters)],
                         feature_request=feature,
                     )
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Seeded {len(SEED_FEATURES)} features with votes."
-            )
-        )
+        self.stdout.write(self.style.SUCCESS(
+            f"Seeded {len(SEED_FEATURES)} features with votes.\n"
+            f"\n"
+            f"  Demo user:  username=demo   password=demo1234\n"
+            f"  Admin user: username=admin  password=admin1234  (is_staff=True)"
+        ))

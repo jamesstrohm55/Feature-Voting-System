@@ -1,72 +1,75 @@
 import threading
 import unittest
-import uuid
 
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.test import TransactionTestCase
 from rest_framework import status
+from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient, APITestCase
 
-from .models import FeatureRequest, Vote, Voter
+from .models import FeatureRequest, Vote
 
 
 def _using_sqlite():
     return "sqlite" in settings.DATABASES["default"]["ENGINE"]
 
 
+def _make_user(username=None, password="testpass123"):
+    """Create a user with a unique username and return (user, token)."""
+    if username is None:
+        import uuid
+        username = f"user-{uuid.uuid4().hex[:8]}"
+    user = User.objects.create_user(username=username, password=password)
+    token, _ = Token.objects.get_or_create(user=user)
+    return user, token
+
+
+def _auth_header(token):
+    """Return the HTTP_AUTHORIZATION kwarg for APIClient."""
+    return {"HTTP_AUTHORIZATION": f"Token {token.key}"}
+
+
 class VoteIntegrityTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        # Author who owns the seeded feature — a distinct voter.
-        self.author_session = self._make_session_id()
-        self.feature = self._seed_feature(self.author_session)
-
-    # ── helpers ───────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _make_session_id() -> str:
-        return str(uuid.uuid4())
-
-    def _seed_feature(self, author_session: str) -> FeatureRequest:
-        author, _ = Voter.objects.get_or_create(session_id=author_session)
-        return FeatureRequest.objects.create(
+        from django.core.cache import cache
+        cache.clear()
+        self.author, self.author_token = _make_user()
+        self.feature = FeatureRequest.objects.create(
             title="Test feature",
             description="A feature created for testing purposes.",
-            author=author,
+            author=self.author,
         )
 
-    def _vote(self, feature_id: uuid.UUID, session: str):
+    def _vote(self, feature_id, token):
         return self.client.post(
             f"/api/features/{feature_id}/vote/",
-            HTTP_X_SESSION_ID=session,
+            **_auth_header(token),
         )
 
-    def _unvote(self, feature_id: uuid.UUID, session: str):
+    def _unvote(self, feature_id, token):
         return self.client.delete(
             f"/api/features/{feature_id}/vote/",
-            HTTP_X_SESSION_ID=session,
+            **_auth_header(token),
         )
 
-    # ── tests ─────────────────────────────────────────────────────────────
-
     def test_duplicate_vote_returns_409(self):
-        voter_session = self._make_session_id()
-
-        first = self._vote(self.feature.id, voter_session)
+        _, voter_token = _make_user()
+        first = self._vote(self.feature.id, voter_token)
         self.assertEqual(first.status_code, status.HTTP_201_CREATED)
 
-        second = self._vote(self.feature.id, voter_session)
+        second = self._vote(self.feature.id, voter_token)
         self.assertEqual(second.status_code, status.HTTP_409_CONFLICT)
 
     def test_self_vote_returns_403(self):
-        resp = self._vote(self.feature.id, self.author_session)
+        resp = self._vote(self.feature.id, self.author_token)
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_unvote_without_vote_returns_404(self):
-        voter_session = self._make_session_id()
-
-        resp = self._unvote(self.feature.id, voter_session)
+        _, voter_token = _make_user()
+        resp = self._unvote(self.feature.id, voter_token)
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
 
@@ -74,113 +77,126 @@ class VoteCountTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.author_session = self._make_session_id()
-        self.feature = self._seed_feature(self.author_session)
-
-    # ── helpers ───────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _make_session_id() -> str:
-        return str(uuid.uuid4())
-
-    def _seed_feature(self, author_session: str) -> FeatureRequest:
-        author, _ = Voter.objects.get_or_create(session_id=author_session)
-        return FeatureRequest.objects.create(
+        from django.core.cache import cache
+        cache.clear()
+        self.author, self.author_token = _make_user()
+        self.feature = FeatureRequest.objects.create(
             title="Count feature",
             description="A feature for vote-count testing.",
-            author=author,
+            author=self.author,
         )
 
-    def _vote(self, feature_id: uuid.UUID, session: str):
+    def _vote(self, feature_id, token):
         return self.client.post(
             f"/api/features/{feature_id}/vote/",
-            HTTP_X_SESSION_ID=session,
+            **_auth_header(token),
         )
 
-    def _unvote(self, feature_id: uuid.UUID, session: str):
+    def _unvote(self, feature_id, token):
         return self.client.delete(
             f"/api/features/{feature_id}/vote/",
-            HTTP_X_SESSION_ID=session,
+            **_auth_header(token),
         )
 
-    # ── tests ─────────────────────────────────────────────────────────────
-
     def test_vote_increments_count_to_one(self):
-        voter = self._make_session_id()
-        self._vote(self.feature.id, voter)
-
+        _, token = _make_user()
+        self._vote(self.feature.id, token)
         self.feature.refresh_from_db()
         self.assertEqual(self.feature.vote_count, 1)
 
     def test_unvote_decrements_count_to_zero(self):
-        voter = self._make_session_id()
-        self._vote(self.feature.id, voter)
-        self._unvote(self.feature.id, voter)
-
+        _, token = _make_user()
+        self._vote(self.feature.id, token)
+        self._unvote(self.feature.id, token)
         self.feature.refresh_from_db()
         self.assertEqual(self.feature.vote_count, 0)
 
     def test_two_voters_yields_count_of_two(self):
-        voter_a = self._make_session_id()
-        voter_b = self._make_session_id()
-        self._vote(self.feature.id, voter_a)
-        self._vote(self.feature.id, voter_b)
-
+        _, token_a = _make_user()
+        _, token_b = _make_user()
+        self._vote(self.feature.id, token_a)
+        self._vote(self.feature.id, token_b)
         self.feature.refresh_from_db()
         self.assertEqual(self.feature.vote_count, 2)
 
 
-class MiddlewareAndSerializerTests(APITestCase):
+class AuthAndSerializerTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        # Clear the throttle cache so rate-limit state doesn't leak between tests.
         from django.core.cache import cache
         cache.clear()
 
-    @staticmethod
-    def _make_session_id() -> str:
-        return str(uuid.uuid4())
-
-    # ── middleware rejection tests ────────────────────────────────────────
-
-    def test_missing_session_header_returns_401(self):
+    def test_unauthenticated_request_returns_401(self):
         resp = self.client.get("/api/features/")
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_malformed_session_header_returns_400(self):
-        resp = self.client.get(
-            "/api/features/",
-            HTTP_X_SESSION_ID="not-a-uuid",
+    def test_register_and_login(self):
+        # Register
+        resp = self.client.post(
+            "/api/auth/register/",
+            data={"username": "newuser", "password": "pass1234"},
+            format="json",
         )
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertIn("token", resp.data)
+        self.assertEqual(resp.data["username"], "newuser")
 
-    # ── serializer ignores spoofed fields ────────────────────────────────
+        # Login with same credentials
+        resp = self.client.post(
+            "/api/auth/login/",
+            data={"username": "newuser", "password": "pass1234"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("token", resp.data)
 
-    def test_author_set_from_session_not_request_body(self):
-        session = self._make_session_id()
-        spoofed_author = str(uuid.uuid4())
+    def test_duplicate_register_returns_409(self):
+        self.client.post(
+            "/api/auth/register/",
+            data={"username": "taken", "password": "pass1234"},
+            format="json",
+        )
+        resp = self.client.post(
+            "/api/auth/register/",
+            data={"username": "taken", "password": "pass1234"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
 
+    def test_login_bad_password_returns_401(self):
+        self.client.post(
+            "/api/auth/register/",
+            data={"username": "user1", "password": "pass1234"},
+            format="json",
+        )
+        resp = self.client.post(
+            "/api/auth/login/",
+            data={"username": "user1", "password": "wrongpass"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_author_set_from_token_not_request_body(self):
+        user, token = _make_user()
         resp = self.client.post(
             "/api/features/",
             data={
                 "title": "Legit feature",
                 "description": "This description is long enough to pass validation.",
-                "author": spoofed_author,
+                "author": 9999,
             },
             format="json",
-            HTTP_X_SESSION_ID=session,
+            **_auth_header(token),
         )
-
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(resp.data["author_session_id"], session)
+        self.assertEqual(resp.data["author_username"], user.username)
 
         feature = FeatureRequest.objects.get(id=resp.data["id"])
-        self.assertEqual(feature.author.session_id, session)
+        self.assertEqual(feature.author, user)
 
     def test_injected_vote_count_is_ignored(self):
-        session = self._make_session_id()
-
+        _, token = _make_user()
         resp = self.client.post(
             "/api/features/",
             data={
@@ -189,19 +205,14 @@ class MiddlewareAndSerializerTests(APITestCase):
                 "vote_count": 9999,
             },
             format="json",
-            HTTP_X_SESSION_ID=session,
+            **_auth_header(token),
         )
-
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-
         feature = FeatureRequest.objects.get(id=resp.data["id"])
         self.assertEqual(feature.vote_count, 0)
 
-    # ── rate limiting ────────────────────────────────────────────────────
-
     def test_feature_create_throttled_after_5(self):
-        session = self._make_session_id()
-
+        _, token = _make_user()
         for i in range(5):
             resp = self.client.post(
                 "/api/features/",
@@ -210,7 +221,7 @@ class MiddlewareAndSerializerTests(APITestCase):
                     "description": "This description is long enough to pass validation.",
                 },
                 format="json",
-                HTTP_X_SESSION_ID=session,
+                **_auth_header(token),
             )
             self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
@@ -221,16 +232,15 @@ class MiddlewareAndSerializerTests(APITestCase):
                 "description": "This description is long enough to pass validation.",
             },
             format="json",
-            HTTP_X_SESSION_ID=session,
+            **_auth_header(token),
         )
         self.assertEqual(resp.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertIn("Rate limit exceeded", resp.data["detail"])
 
     def test_vote_throttled_after_30(self):
-        session = self._make_session_id()
+        _, voter_token = _make_user()
+        author, _ = _make_user()
 
-        # Create 31 features from a different author to vote on.
-        author = Voter.objects.create(session_id=self._make_session_id())
         features = [
             FeatureRequest.objects.create(
                 title=f"Votable {i}",
@@ -243,13 +253,13 @@ class MiddlewareAndSerializerTests(APITestCase):
         for i in range(30):
             resp = self.client.post(
                 f"/api/features/{features[i].id}/vote/",
-                HTTP_X_SESSION_ID=session,
+                **_auth_header(voter_token),
             )
             self.assertEqual(resp.status_code, status.HTTP_201_CREATED, f"Vote {i} failed")
 
         resp = self.client.post(
             f"/api/features/{features[30].id}/vote/",
-            HTTP_X_SESSION_ID=session,
+            **_auth_header(voter_token),
         )
         self.assertEqual(resp.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertIn("Rate limit exceeded", resp.data["detail"])
@@ -259,11 +269,12 @@ class RankingTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.viewer_session = str(uuid.uuid4())
+        from django.core.cache import cache
+        cache.clear()
+        self.viewer, self.viewer_token = _make_user()
 
     def _make_feature(self, title, vote_count=0):
-        """Create a feature with a unique author and a preset vote_count."""
-        author = Voter.objects.create(session_id=str(uuid.uuid4()))
+        author, _ = _make_user()
         return FeatureRequest.objects.create(
             title=title,
             description=f"Description for {title} is long enough.",
@@ -272,20 +283,17 @@ class RankingTests(APITestCase):
         )
 
     def _add_votes(self, feature, count):
-        """Cast `count` votes from distinct voters."""
         for _ in range(count):
-            voter = Voter.objects.create(session_id=str(uuid.uuid4()))
-            Vote.objects.create(voter=voter, feature_request=feature)
+            user, _ = _make_user()
+            Vote.objects.create(user=user, feature_request=feature)
 
     def _list_ids(self):
         resp = self.client.get(
             "/api/features/",
-            HTTP_X_SESSION_ID=self.viewer_session,
+            **_auth_header(self.viewer_token),
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         return [f["id"] for f in resp.data]
-
-    # ── tests ─────────────────────────────────────────────────────────────
 
     def test_ordered_by_vote_count_descending(self):
         fa = self._make_feature("A")
@@ -296,7 +304,6 @@ class RankingTests(APITestCase):
         self._add_votes(fb, 1)
         self._add_votes(fc, 2)
 
-        # Sync the denormalized column with actual vote rows.
         FeatureRequest.objects.filter(pk=fa.pk).update(vote_count=3)
         FeatureRequest.objects.filter(pk=fb.pk).update(vote_count=1)
         FeatureRequest.objects.filter(pk=fc.pk).update(vote_count=2)
@@ -305,7 +312,6 @@ class RankingTests(APITestCase):
         self.assertEqual(ids, [str(fa.id), str(fc.id), str(fb.id)])
 
     def test_tiebreaker_is_most_recent_first(self):
-        # Both features have the same vote_count; the newer one should rank first.
         f_old = self._make_feature("Old")
         f_new = self._make_feature("New")
 
@@ -313,13 +319,11 @@ class RankingTests(APITestCase):
         self.assertEqual(ids[0], str(f_new.id))
         self.assertEqual(ids[1], str(f_old.id))
 
-    # ── search tests ─────────────────────────────────────────────────────
-
     def _search_ids(self, query):
         resp = self.client.get(
             "/api/features/",
             {"search": query},
-            HTTP_X_SESSION_ID=self.viewer_session,
+            **_auth_header(self.viewer_token),
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         return [f["id"] for f in resp.data]
@@ -332,15 +336,16 @@ class RankingTests(APITestCase):
         self.assertEqual(ids, [str(fb.id)])
 
     def test_search_filters_by_description(self):
+        author, _ = _make_user()
         fa = FeatureRequest.objects.create(
             title="Alpha",
             description="Integrate with Slack for notifications.",
-            author=Voter.objects.create(session_id=str(uuid.uuid4())),
+            author=author,
         )
         FeatureRequest.objects.create(
             title="Beta",
             description="Generic description that is long enough.",
-            author=Voter.objects.create(session_id=str(uuid.uuid4())),
+            author=author,
         )
 
         ids = self._search_ids("slack")
@@ -353,7 +358,6 @@ class RankingTests(APITestCase):
         FeatureRequest.objects.filter(pk=fb.pk).update(vote_count=5)
 
         ids = self._search_ids("dark mode")
-        # fb has more votes, should come first.
         self.assertEqual(ids, [str(fb.id), str(fa.id)])
 
     def test_empty_search_returns_all(self):
@@ -373,25 +377,16 @@ class RankingTests(APITestCase):
     "Postgres (the production database) where real row-level locking works.",
 )
 class RaceConditionTests(TransactionTestCase):
-    """Prove the UniqueConstraint catches a true concurrent double-vote.
-
-    Requires Postgres — SQLite's in-memory shared-cache mode cannot handle
-    simultaneous writes from two threads.  TransactionTestCase is used so
-    each thread's writes are actually committed (TestCase wraps the whole
-    test in an uncommitted transaction invisible to other connections).
-    """
+    """Prove the UniqueConstraint catches a true concurrent double-vote."""
 
     def setUp(self):
-        self.author_session = str(uuid.uuid4())
-        author, _ = Voter.objects.get_or_create(session_id=self.author_session)
+        self.author, _ = _make_user()
         self.feature = FeatureRequest.objects.create(
             title="Race feature",
             description="A feature for race-condition testing.",
-            author=author,
+            author=self.author,
         )
-        # Pre-create the voter so both threads resolve to the same row.
-        self.voter_session = str(uuid.uuid4())
-        Voter.objects.get_or_create(session_id=self.voter_session)
+        self.voter, self.voter_token = _make_user()
 
     def test_concurrent_duplicate_vote_creates_exactly_one(self):
         barrier = threading.Barrier(2, timeout=5)
@@ -404,7 +399,7 @@ class RaceConditionTests(TransactionTestCase):
             barrier.wait()
             resp = client.post(
                 f"/api/features/{self.feature.id}/vote/",
-                HTTP_X_SESSION_ID=self.voter_session,
+                **_auth_header(self.voter_token),
             )
             results.append(resp.status_code)
             connection.close()
@@ -416,10 +411,7 @@ class RaceConditionTests(TransactionTestCase):
         t1.join(timeout=10)
         t2.join(timeout=10)
 
-        # Exactly one 201 and one 409, in either order.
         self.assertCountEqual(results, [201, 409])
-
-        # Database state: one Vote row, vote_count == 1.
         self.assertEqual(
             Vote.objects.filter(feature_request=self.feature).count(), 1
         )

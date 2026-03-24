@@ -6,28 +6,23 @@ from rest_framework.throttling import SimpleRateThrottle
 #   CACHES = { "default": { "BACKEND": "django_redis.cache.RedisCache", ... } }
 
 
-class _SessionThrottle(SimpleRateThrottle):
-    """Base throttle that keys on X-Session-Id instead of IP address."""
+class _UserThrottle(SimpleRateThrottle):
+    """Base throttle that keys on the authenticated user's ID."""
 
     def get_cache_key(self, request, view):
-        session_id = request.headers.get("X-Session-Id")
-        if not session_id:
+        if not request.user or not request.user.is_authenticated:
             return None
         return self.cache_format % {
             "scope": self.scope,
-            "ident": session_id,
+            "ident": request.user.pk,
         }
 
-    def throttle_failure(self):
-        """Called by DRF internals — we override the exception in the view layer."""
-        return False
 
-
-class FeatureCreateThrottle(_SessionThrottle):
+class FeatureCreateThrottle(_UserThrottle):
     scope = "feature_create"
     rate = "5/hour"
 
 
-class VoteThrottle(_SessionThrottle):
+class VoteThrottle(_UserThrottle):
     scope = "vote"
     rate = "30/hour"

@@ -6,7 +6,7 @@ from .models import FeatureRequest
 class FeatureRequestListSerializer(serializers.ModelSerializer):
     """Read serializer for the feature list. Includes per-viewer computed fields."""
 
-    author_session_id = serializers.CharField(source="author.session_id", read_only=True)
+    author_username = serializers.CharField(source="author.username", read_only=True)
     has_voted = serializers.SerializerMethodField()
     is_own = serializers.SerializerMethodField()
 
@@ -16,7 +16,7 @@ class FeatureRequestListSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
-            "author_session_id",
+            "author_username",
             "status",
             "vote_count",
             "has_voted",
@@ -26,20 +26,19 @@ class FeatureRequestListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_has_voted(self, obj):
-        voter = self.context.get("voter")
-        if not voter:
+        user = self.context.get("user")
+        if not user:
             return False
-        # Use prefetched voter_vote_ids set if available
-        voter_vote_ids = self.context.get("voter_voted_feature_ids")
-        if voter_vote_ids is not None:
-            return obj.id in voter_vote_ids
-        return obj.votes.filter(voter=voter).exists()
+        user_voted_ids = self.context.get("user_voted_feature_ids")
+        if user_voted_ids is not None:
+            return obj.id in user_voted_ids
+        return obj.votes.filter(user=user).exists()
 
     def get_is_own(self, obj):
-        voter = self.context.get("voter")
-        if not voter:
+        user = self.context.get("user")
+        if not user:
             return False
-        return obj.author_id == voter.id
+        return obj.author_id == user.id
 
 
 class FeatureRequestCreateSerializer(serializers.ModelSerializer):
