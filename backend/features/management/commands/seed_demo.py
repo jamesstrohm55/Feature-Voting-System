@@ -135,12 +135,19 @@ class Command(BaseCommand):
             label = "created" if created else "updated"
             self.stdout.write(f"  Account '{acct['username']}' {label}.")
 
+    _SEED_USERNAMES = [
+        "Sarah", "Marcus", "Priya", "James", "Elena", "Alex", "Mia", "Daniel",
+        "Olivia", "Liam", "Emma", "Noah", "Ava", "Ethan", "Sophia", "Lucas",
+        "Isabella", "Mason", "Charlotte", "Logan", "Amelia", "Jackson",
+        "Harper", "Aiden", "Evelyn", "Carter", "Aria", "Jayden",
+    ]
+
     def handle(self, *args, **options):
         if options["flush"]:
             count = FeatureRequest.objects.count()
             Vote.objects.all().delete()
             FeatureRequest.objects.all().delete()
-            User.objects.filter(username__startswith="seed-").delete()
+            User.objects.filter(username__in=self._SEED_USERNAMES).delete()
             self.stdout.write(f"Flushed {count} features and seed users.")
 
         # Always ensure demo accounts exist regardless of --flush.
@@ -152,20 +159,28 @@ class Command(BaseCommand):
             )
         else:
             # Clean up any leftover seed users from a previous partial run.
-            User.objects.filter(username__startswith="seed-").delete()
+            User.objects.filter(username__in=self._SEED_USERNAMES).delete()
+
+            author_names = [
+                "Sarah", "Marcus", "Priya", "James",
+                "Elena", "Alex", "Mia", "Daniel",
+            ]
+            voter_names = [
+                "Olivia", "Liam", "Emma", "Noah",
+                "Ava", "Ethan", "Sophia", "Lucas",
+                "Isabella", "Mason", "Charlotte", "Logan",
+                "Amelia", "Jackson", "Harper", "Aiden",
+                "Evelyn", "Carter", "Aria", "Jayden",
+            ]
 
             with transaction.atomic():
                 authors = [
-                    User.objects.create_user(
-                        username=f"seed-author-{i}", password="seed1234"
-                    )
-                    for i in range(len(SEED_FEATURES))
+                    User.objects.create_user(username=name, password="seed1234")
+                    for name in author_names[: len(SEED_FEATURES)]
                 ]
                 voters = [
-                    User.objects.create_user(
-                        username=f"seed-voter-{i}", password="seed1234"
-                    )
-                    for i in range(20)
+                    User.objects.create_user(username=name, password="seed1234")
+                    for name in voter_names
                 ]
 
                 for i, spec in enumerate(SEED_FEATURES):
